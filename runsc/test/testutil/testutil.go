@@ -16,6 +16,7 @@
 package testutil
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,10 +25,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"gvisor.googlesource.com/gvisor/runsc/boot"
 	"gvisor.googlesource.com/gvisor/runsc/specutils"
 )
+
+// RaceEnabled is set to true if it was built with '--race' option.
+var RaceEnabled = false
 
 // ConfigureExePath configures the executable for runsc in the test environment.
 func ConfigureExePath() error {
@@ -66,6 +71,18 @@ func ConfigureExePath() error {
 	return nil
 }
 
+// TestConfig return the default configuration to use in tests.
+func TestConfig() *boot.Config {
+	return &boot.Config{
+		Debug:          true,
+		LogFormat:      "text",
+		LogPackets:     true,
+		Network:        boot.NetworkNone,
+		Strace:         true,
+		MultiContainer: true,
+	}
+}
+
 // NewSpecWithArgs creates a simple spec with the given args suitable for use
 // in tests.
 func NewSpecWithArgs(args ...string) *specs.Spec {
@@ -96,38 +113,29 @@ func SetupRootDir() (string, error) {
 
 // SetupContainer creates a bundle and root dir for the container, generates a
 // test config, and writes the spec to config.json in the bundle dir.
-func SetupContainer(spec *specs.Spec) (rootDir, bundleDir string, conf *boot.Config, err error) {
+func SetupContainer(spec *specs.Spec, conf *boot.Config) (rootDir, bundleDir string, err error) {
 	rootDir, err = SetupRootDir()
 	if err != nil {
-		return "", "", nil, err
+		return "", "", err
 	}
-	bundleDir, conf, err = SetupContainerInRoot(rootDir, spec)
-	return rootDir, bundleDir, conf, err
+	bundleDir, err = SetupContainerInRoot(rootDir, spec, conf)
+	return rootDir, bundleDir, err
 }
 
 // SetupContainerInRoot creates a bundle for the container, generates a test
 // config, and writes the spec to config.json in the bundle dir.
-func SetupContainerInRoot(rootDir string, spec *specs.Spec) (bundleDir string, conf *boot.Config, err error) {
+func SetupContainerInRoot(rootDir string, spec *specs.Spec, conf *boot.Config) (bundleDir string, err error) {
 	bundleDir, err = ioutil.TempDir("", "bundle")
 	if err != nil {
-		return "", nil, fmt.Errorf("error creating bundle dir: %v", err)
+		return "", fmt.Errorf("error creating bundle dir: %v", err)
 	}
 
 	if err = writeSpec(bundleDir, spec); err != nil {
-		return "", nil, fmt.Errorf("error writing spec: %v", err)
+		return "", fmt.Errorf("error writing spec: %v", err)
 	}
 
-	conf = &boot.Config{
-		Debug:          true,
-		LogFormat:      "text",
-		LogPackets:     true,
-		Network:        boot.NetworkNone,
-		RootDir:        rootDir,
-		Strace:         true,
-		MultiContainer: true,
-	}
-
-	return bundleDir, conf, nil
+	conf.RootDir = rootDir
+	return bundleDir, nil
 }
 
 // writeSpec writes the spec to disk in the given directory.
@@ -165,4 +173,12 @@ func Copy(src, dst string) error {
 
 	_, err = io.Copy(out, in)
 	return err
+}
+
+// Poll is a shorthand function to poll for something with given timeout.
+func Poll(cb func() error, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	b := backoff.WithContext(backoff.NewConstantBackOff(100*time.Millisecond), ctx)
+	return backoff.Retry(cb, b)
 }

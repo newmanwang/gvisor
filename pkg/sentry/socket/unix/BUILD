@@ -1,16 +1,6 @@
 package(licenses = ["notice"])  # Apache 2.0
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
-load("//tools/go_stateify:defs.bzl", "go_stateify")
-
-go_stateify(
-    name = "unix_state",
-    srcs = [
-        "unix.go",
-    ],
-    out = "unix_state.go",
-    package = "unix",
-)
+load("//tools/go_stateify:defs.bzl", "go_library")
 
 go_library(
     name = "unix",
@@ -18,7 +8,6 @@ go_library(
         "device.go",
         "io.go",
         "unix.go",
-        "unix_state.go",
     ],
     importpath = "gvisor.googlesource.com/gvisor/pkg/sentry/socket/unix",
     visibility = ["//pkg/sentry:internal"],
@@ -38,7 +27,6 @@ go_library(
         "//pkg/sentry/socket/control",
         "//pkg/sentry/socket/epsocket",
         "//pkg/sentry/usermem",
-        "//pkg/state",
         "//pkg/syserr",
         "//pkg/syserror",
         "//pkg/tcpip",

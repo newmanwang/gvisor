@@ -40,16 +40,16 @@ func walkDescriptors(t *kernel.Task, p string, toInode func(*fs.File, kernel.FDF
 	}
 
 	var file *fs.File
-	var flags kernel.FDFlags
+	var fdFlags kernel.FDFlags
 	t.WithMuLocked(func(t *kernel.Task) {
 		if fdm := t.FDMap(); fdm != nil {
-			file, flags = fdm.GetDescriptor(kdefs.FD(n))
+			file, fdFlags = fdm.GetDescriptor(kdefs.FD(n))
 		}
 	})
 	if file == nil {
 		return nil, syserror.ENOENT
 	}
-	return toInode(file, flags), nil
+	return toInode(file, fdFlags), nil
 }
 
 // readDescriptors reads fds in the task starting at offset, and calls the
@@ -138,6 +138,8 @@ func (f *fd) Close() error {
 }
 
 // fdDir implements /proc/TID/fd.
+//
+// +stateify savable
 type fdDir struct {
 	ramfs.Dir
 
@@ -197,20 +199,25 @@ func (f *fdDir) DeprecatedReaddir(ctx context.Context, dirCtx *fs.DirCtx, offset
 }
 
 // fdInfo is a single file in /proc/TID/fdinfo/.
+//
+// +stateify savable
 type fdInfo struct {
 	ramfs.File
 
-	flags kernel.FDFlags
+	flags   fs.FileFlags
+	fdFlags kernel.FDFlags
 }
 
 // newFdInfo returns a new fdInfo based on an existing file.
-func newFdInfo(t *kernel.Task, _ *fs.File, flags kernel.FDFlags, msrc *fs.MountSource) *fs.Inode {
-	fdi := &fdInfo{flags: flags}
+func newFdInfo(t *kernel.Task, file *fs.File, fdFlags kernel.FDFlags, msrc *fs.MountSource) *fs.Inode {
+	fdi := &fdInfo{flags: file.Flags(), fdFlags: fdFlags}
 	fdi.InitFile(t, fs.RootOwner, fs.FilePermissions{User: fs.PermMask{Read: true}})
 	// TODO: Get pos, locks, and other data.  For now we only
 	// have flags.
 	// See https://www.kernel.org/doc/Documentation/filesystems/proc.txt
-	fdi.Append([]byte(fmt.Sprintf("flags: %08o\n", flags)))
+
+	flags := file.Flags().ToLinux() | fdFlags.ToLinuxFileFlags()
+	fdi.Append([]byte(fmt.Sprintf("flags:\t0%o\n", flags)))
 	return newFile(fdi, msrc, fs.SpecialFile, t)
 }
 
@@ -226,6 +233,8 @@ func (*fdInfo) Truncate(ctx context.Context, inode *fs.Inode, size int64) error 
 
 // fdInfoDir implements /proc/TID/fdinfo.  It embeds an fdDir, but overrides
 // Lookup and Readdir.
+//
+// +stateify savable
 type fdInfoDir struct {
 	ramfs.Dir
 
@@ -241,8 +250,8 @@ func newFdInfoDir(t *kernel.Task, msrc *fs.MountSource) *fs.Inode {
 
 // Lookup loads an fd in /proc/TID/fdinfo into a Dirent.
 func (fdid *fdInfoDir) Lookup(ctx context.Context, dir *fs.Inode, p string) (*fs.Dirent, error) {
-	n, err := walkDescriptors(fdid.t, p, func(file *fs.File, flags kernel.FDFlags) *fs.Inode {
-		return newFdInfo(fdid.t, file, flags, dir.MountSource)
+	n, err := walkDescriptors(fdid.t, p, func(file *fs.File, fdFlags kernel.FDFlags) *fs.Inode {
+		return newFdInfo(fdid.t, file, fdFlags, dir.MountSource)
 	})
 	if err != nil {
 		return nil, err

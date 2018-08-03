@@ -280,7 +280,10 @@ func (t *Task) Clone(opts *CloneOptions) (ThreadID, *SyscallControl, error) {
 	// "If fork/clone and execve are allowed by @prog, any child processes will
 	// be constrained to the same filters and system call ABI as the parent." -
 	// Documentation/prctl/seccomp_filter.txt
-	nt.syscallFilters = append([]bpf.Program(nil), t.syscallFilters...)
+	if f := t.syscallFilters.Load(); f != nil {
+		copiedFilters := append([]bpf.Program(nil), f.([]bpf.Program)...)
+		nt.syscallFilters.Store(copiedFilters)
+	}
 	if opts.Vfork {
 		nt.vforkParent = t
 	}
@@ -349,6 +352,7 @@ func (t *Task) unstopVforkParent() {
 	}
 }
 
+// +stateify savable
 type runSyscallAfterPtraceEventClone struct {
 	vforkChild *Task
 
@@ -366,6 +370,7 @@ func (r *runSyscallAfterPtraceEventClone) execute(t *Task) taskRunState {
 	return (*runSyscallExit)(nil)
 }
 
+// +stateify savable
 type runSyscallAfterVforkStop struct {
 	// childTID has the same meaning as
 	// runSyscallAfterPtraceEventClone.vforkChildTID.
@@ -471,6 +476,8 @@ func (t *Task) Unshare(opts *SharingOptions) error {
 // current MM. (Normally, CLONE_VFORK is used in conjunction with CLONE_VM, so
 // that the child and parent share mappings until the child execve()s into a
 // new process image or exits.)
+//
+// +stateify savable
 type vforkStop struct{}
 
 // StopIgnoresKill implements TaskStop.Killable.

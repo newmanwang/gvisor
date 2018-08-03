@@ -1,23 +1,12 @@
 package(licenses = ["notice"])  # Apache 2.0
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
-load("//tools/go_stateify:defs.bzl", "go_stateify")
-
-go_stateify(
-    name = "shm_state",
-    srcs = [
-        "shm.go",
-    ],
-    out = "shm_autogen_state.go",
-    package = "shm",
-)
+load("//tools/go_stateify:defs.bzl", "go_library")
 
 go_library(
     name = "shm",
     srcs = [
         "device.go",
         "shm.go",
-        "shm_autogen_state.go",
     ],
     importpath = "gvisor.googlesource.com/gvisor/pkg/sentry/kernel/shm",
     visibility = ["//pkg/sentry:internal"],
@@ -34,7 +23,6 @@ go_library(
         "//pkg/sentry/platform",
         "//pkg/sentry/usage",
         "//pkg/sentry/usermem",
-        "//pkg/state",
         "//pkg/syserror",
     ],
 )

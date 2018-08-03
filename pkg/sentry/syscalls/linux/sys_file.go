@@ -148,6 +148,8 @@ func openAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, flags uint) (fd u
 		}
 
 		fileFlags := linuxToFlags(flags)
+		// Linux always adds the O_LARGEFILE flag when running in 64-bit mode.
+		fileFlags.LargeFile = true
 		if fs.IsDir(d.Inode.StableAttr) {
 			// Don't allow directories to be opened writable.
 			if fileFlags.Write {
@@ -451,7 +453,7 @@ func accessAt(t *kernel.Task, dirFD kdefs.FD, addr usermem.Addr, resolve bool, m
 		// uid/gid. We do this by temporarily clearing all FS-related
 		// capabilities and switching the fsuid/fsgid around to the
 		// real ones." -fs/open.c:faccessat
-		creds := t.Credentials()
+		creds := t.Credentials().Fork()
 		creds.EffectiveKUID = creds.RealKUID
 		creds.EffectiveKGID = creds.RealKGID
 		if creds.EffectiveKUID.In(creds.UserNamespace) == auth.RootUID {
@@ -807,14 +809,14 @@ func Fcntl(t *kernel.Task, args arch.SyscallArguments) (uintptr, *kernel.Syscall
 		}
 		return uintptr(fd), nil, nil
 	case linux.F_GETFD:
-		return uintptr(fdFlagsToLinux(flags)), nil, nil
+		return uintptr(flags.ToLinuxFDFlags()), nil, nil
 	case linux.F_SETFD:
 		flags := args[2].Uint()
 		t.FDMap().SetFlags(fd, kernel.FDFlags{
 			CloseOnExec: flags&syscall.FD_CLOEXEC != 0,
 		})
 	case linux.F_GETFL:
-		return uintptr(flagsToLinux(file.Flags())), nil, nil
+		return uintptr(file.Flags().ToLinux()), nil, nil
 	case linux.F_SETFL:
 		flags := uint(args[2].Uint())
 		file.SetFlags(linuxToSettableFlags(flags))

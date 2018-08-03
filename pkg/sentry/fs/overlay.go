@@ -16,6 +16,7 @@ package fs
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"gvisor.googlesource.com/gvisor/pkg/log"
@@ -74,6 +75,12 @@ const (
 // mask the existence of name.
 func XattrOverlayWhiteout(name string) string {
 	return XattrOverlayWhiteoutPrefix + name
+}
+
+// isXattrOverlay returns whether the given extended attribute configures the
+// overlay.
+func isXattrOverlay(name string) bool {
+	return strings.HasPrefix(name, XattrOverlayPrefix)
 }
 
 // NewOverlayRoot produces the root of an overlay.
@@ -138,6 +145,8 @@ func newOverlayInode(ctx context.Context, o *overlayEntry, msrc *MountSource) *I
 }
 
 // overlayEntry is the overlay metadata of an Inode. It implements Mappable.
+//
+// +stateify savable
 type overlayEntry struct {
 	// lowerExists is true if an Inode exists for this file in the lower
 	// filesystem. If lowerExists is true, then the overlay must create

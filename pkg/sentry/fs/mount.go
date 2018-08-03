@@ -101,6 +101,8 @@ func (i InodeMappings) String() string {
 // (e.g. cannot be mounted at different locations).
 //
 // TODO: Move mount-specific information out of MountSource.
+//
+// +stateify savable
 type MountSource struct {
 	refs.AtomicRefCount
 
@@ -157,10 +159,10 @@ const defaultDirentCacheSize uint64 = 1000
 func NewMountSource(mops MountSourceOperations, filesystem Filesystem, flags MountSourceFlags) *MountSource {
 	return &MountSource{
 		MountSourceOperations: mops,
-		Flags:      flags,
-		Filesystem: filesystem,
-		fscache:    NewDirentCache(defaultDirentCacheSize),
-		children:   make(map[*MountSource]struct{}),
+		Flags:                 flags,
+		Filesystem:            filesystem,
+		fscache:               NewDirentCache(defaultDirentCacheSize),
+		children:              make(map[*MountSource]struct{}),
 	}
 }
 
@@ -260,6 +262,8 @@ func NewNonCachingMountSource(filesystem Filesystem, flags MountSourceFlags) *Mo
 }
 
 // SimpleMountSourceOperations implements MountSourceOperations.
+//
+// +stateify savable
 type SimpleMountSourceOperations struct {
 	keep bool
 }

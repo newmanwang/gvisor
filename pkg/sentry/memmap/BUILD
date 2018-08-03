@@ -1,19 +1,7 @@
 package(licenses = ["notice"])  # Apache 2.0
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 load("//tools/go_generics:defs.bzl", "go_template_instance")
-load("//tools/go_stateify:defs.bzl", "go_stateify")
-
-go_stateify(
-    name = "memmap_state",
-    srcs = [
-        "mappable_range.go",
-        "mapping_set.go",
-        "mapping_set_impl.go",
-    ],
-    out = "memmap_state.go",
-    package = "memmap",
-)
+load("//tools/go_stateify:defs.bzl", "go_library", "go_test")
 
 go_template_instance(
     name = "mappable_range",
@@ -47,7 +35,6 @@ go_library(
         "mapping_set.go",
         "mapping_set_impl.go",
         "memmap.go",
-        "memmap_state.go",
     ],
     importpath = "gvisor.googlesource.com/gvisor/pkg/sentry/memmap",
     visibility = ["//pkg/sentry:internal"],
@@ -57,7 +44,6 @@ go_library(
         "//pkg/sentry/context",
         "//pkg/sentry/platform",
         "//pkg/sentry/usermem",
-        "//pkg/state",
         "//pkg/syserror",
     ],
 )

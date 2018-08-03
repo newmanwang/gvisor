@@ -1,20 +1,7 @@
 package(licenses = ["notice"])  # Apache 2.0
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 load("//tools/go_generics:defs.bzl", "go_template_instance")
-load("//tools/go_stateify:defs.bzl", "go_stateify")
-
-go_stateify(
-    name = "usermem_state",
-    srcs = [
-        "access_type.go",
-        "addr.go",
-        "addr_range.go",
-        "addr_range_seq_unsafe.go",
-    ],
-    out = "usermem_state.go",
-    package = "usermem",
-)
+load("//tools/go_stateify:defs.bzl", "go_library", "go_test")
 
 go_template_instance(
     name = "addr_range",
@@ -37,7 +24,6 @@ go_library(
         "bytes_io.go",
         "bytes_io_unsafe.go",
         "usermem.go",
-        "usermem_state.go",
         "usermem_x86.go",
     ],
     importpath = "gvisor.googlesource.com/gvisor/pkg/sentry/usermem",
@@ -48,7 +34,6 @@ go_library(
         "//pkg/log",
         "//pkg/sentry/context",
         "//pkg/sentry/safemem",
-        "//pkg/state",
         "//pkg/syserror",
         "//pkg/tcpip/buffer",
     ],
