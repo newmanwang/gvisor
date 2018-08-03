@@ -26,14 +26,16 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"io"
 
-	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"gvisor.googlesource.com/gvisor/pkg/log"
 	"gvisor.googlesource.com/gvisor/pkg/sentry/control"
 	"gvisor.googlesource.com/gvisor/pkg/syserror"
 	"gvisor.googlesource.com/gvisor/runsc/boot"
 	"gvisor.googlesource.com/gvisor/runsc/sandbox"
 	"gvisor.googlesource.com/gvisor/runsc/specutils"
+	"gvisor.googlesource.com/gvisor/runsc/cgroup"
 )
 
 // metadataFilename is the name of the metadata file relative to the container
@@ -56,7 +58,8 @@ func validateID(id string) error {
 // Container metadata can be saved and loaded to disk. Within a root directory,
 // we maintain subdirectories for each container named with the container id.
 // The container metadata is stored as a json within the container directory
-// in a file named "meta.json". This metadata format is defined by us and is
+// in a file named "meta.json".
+// This metadata format is defined by us and is
 // not part of the OCI spec.
 //
 // Containers must write their metadata files after any change to their internal
@@ -92,6 +95,13 @@ type Container struct {
 	// Sandbox is the sandbox this container is running in. It will be nil
 	// if the container is not in state Running or Created.
 	Sandbox *sandbox.Sandbox `json:"sandbox"`
+
+	// Path to all the cgroups setup for a container. Key is cgroup subsystem name
+	// with the value as the path.
+	CgroupPaths map[string]string `json:"cgroup_paths"`
+
+	// cgroup manager should not be persisted
+	CgroupManager cgroup.Manager `json:"-"`
 }
 
 // Load loads a container with the given id from a metadata file. id may be an
@@ -188,6 +198,17 @@ func List(rootDir string) ([]string, error) {
 	return out, nil
 }
 
+func writeSync(pipe io.Writer) error {
+	_, err := pipe.Write([]byte{1})
+	return err
+}
+
+func readSync(pipe io.Reader) error {
+	a := make([]byte, 1)
+	_, err := pipe.Read(a)
+	return err
+}
+
 // Create creates the container in a new Sandbox process, unless the metadata
 // indicates that an existing Sandbox should be used.
 func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSocket, pidFile string) (*Container, error) {
@@ -197,6 +218,8 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 	}
 
 	containerRoot := filepath.Join(conf.RootDir, id)
+	log.Infof("Create container %q, container root %s", id, containerRoot)
+
 	if _, err := os.Stat(containerRoot); err == nil {
 		return nil, fmt.Errorf("container with id %q already exists: %q", id, containerRoot)
 	} else if !os.IsNotExist(err) {
@@ -213,6 +236,16 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 		Owner:         os.Getenv("USER"),
 	}
 
+	// cgroupmanager config comes from spec
+	cgroupConfig, err := cgroup.CreateCgroupConfig(spec)
+	if err != nil {
+		return nil, fmt.Errorf("error parse cgroup config for container with id %q: %v", id, err)
+
+	}
+	c.CgroupManager = cgroup.NewCgroupsManager(cgroupConfig, nil)
+
+	log.Debugf("Container cgroup config %v", cgroupConfig)
+
 	// If the metadata annotations indicate that this container should be
 	// started in an existing sandbox, we must do so. The metadata will
 	// indicate the ID of the sandbox, which is the same as the ID of the
@@ -222,6 +255,27 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 		// Start a new sandbox for this container. Any errors after this point
 		// must destroy the container.
 		s, err := sandbox.Create(id, spec, conf, bundleDir, consoleSocket)
+
+		//// do cgroup before sync start
+		c.CgroupManager.Apply(s.Pid)
+		c.CgroupPaths = c.CgroupManager.GetPaths()
+		c.CgroupManager.Set()
+
+		log.Debugf("read from child, %v", s.ParentPipe)
+		// sync with boot process
+		readSync(s.ParentPipe)
+
+		log.Debugf("write to child %v", s.ParentPipe)
+
+		writeSync(s.ParentPipe)
+
+		// Wait for the control server to come up (or timeout).
+		if err := s.WaitForCreated(10 * time.Second); err != nil {
+			return nil, err
+		}
+
+		s.ParentPipe.Close()
+
 		if err != nil {
 			c.Destroy()
 			return nil, err
@@ -477,6 +531,8 @@ func (c *Container) Destroy() error {
 			return err
 		}
 	}
+
+	c.CgroupManager.Destroy()
 
 	// "If any poststop hook fails, the runtime MUST log a warning, but the
 	// remaining hooks and lifecycle continue as if the hook had succeeded" -OCI spec.

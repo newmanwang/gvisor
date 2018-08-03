@@ -160,6 +160,7 @@ func startInNS(cmd *exec.Cmd, nss []specs.LinuxNamespace) error {
 	}
 
 	for _, ns := range nss {
+		log.Debugf("Setup ns %s, %s", ns.Path, ns.Type)
 		if ns.Path == "" {
 			// No path.  Just set a flag to create a new namespace.
 			cmd.SysProcAttr.Cloneflags |= nsCloneFlag(ns.Type)
@@ -173,6 +174,8 @@ func startInNS(cmd *exec.Cmd, nss []specs.LinuxNamespace) error {
 		}
 		defer restoreNS()
 	}
+
+	log.Debugf("Ready to start %s, %v, %v, %s, %v", cmd.Path, cmd.Args, cmd.Env, cmd.Dir, cmd.SysProcAttr)
 
 	return cmd.Start()
 }

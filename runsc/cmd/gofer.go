@@ -148,6 +148,8 @@ func runServers(ats []p9.Attacher, ioFDs []int) {
 			if err != nil {
 				Fatalf("err creating server on FD %d: %v", ioFD, err)
 			}
+
+			log.Infof("New server on fd %d", ioFD)
 			s := p9.NewServer(at)
 			if err := s.Handle(socket); err != nil {
 				Fatalf("P9 server returned error. Gofer is shutting down. FD: %d, err: %v", ioFD, err)

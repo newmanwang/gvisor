@@ -19,6 +19,7 @@ go_library(
         "//pkg/syserror",
         "//runsc/boot",
         "//runsc/sandbox",
+        "//runsc/cgroup",
         "//runsc/specutils",
         "@com_github_opencontainers_runtime-spec//specs-go:go_default_library",
     ],

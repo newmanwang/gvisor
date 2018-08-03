@@ -142,6 +142,8 @@ func (ex *Exec) Execute(_ context.Context, f *flag.FlagSet, args ...interface{})
 		Fatalf("error getting executable path: %v", err)
 	}
 
+	// TODO: put new process into cgroup
+
 	ws, err := c.Execute(e)
 	if err != nil {
 		Fatalf("error getting processes for container: %v", err)

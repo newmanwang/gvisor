@@ -104,6 +104,9 @@ func (a *attachPoint) Attach(appPath string) (p9.File, error) {
 	}
 
 	root := path.Join(a.prefix, appPath)
+
+	log.Infof("AttachPointPath %s", root)
+
 	fi, err := os.Stat(root)
 	if err != nil {
 		return nil, err
@@ -229,12 +232,15 @@ func openAnyFile(parent *localFile, name string) (*os.File, string, error) {
 	var fd int
 	for i := startIdx; i < len(modes); i++ {
 		fd, err = syscall.Openat(parent.controlFD(), name, openFlags|modes[i], 0)
+		log.Infof("OpenAtAt%s, %s, %d", parent.controlFile.Name(), name, parent.controlFD())
 		if err == nil {
 			// openat succeeded, we're done.
 			break
 		}
 		switch e := extractErrno(err); e {
 		case syscall.ENOENT:
+			log.Infof("OpenAtAtFail%s, %s, %d, %v", parent.controlFile.Name(), name, parent.controlFD(), err)
+
 			// File doesn't exist, no point in retrying.
 			return nil, "", e
 		case syscall.ELOOP:
@@ -271,6 +277,8 @@ func newLocalFile(conf Config, file *os.File, path string, stat syscall.Stat_t) 
 	case syscall.S_IFLNK:
 		ft = symlink
 	default:
+		log.Infof("eeeeeeee...... %s", path)
+
 		return nil, syscall.EINVAL
 	}
 	return &localFile{
@@ -470,6 +478,7 @@ func (l *localFile) Walk(names []string) ([]p9.QID, p9.File, error) {
 			mode:        invalidMode,
 			conf:        l.conf,
 		}
+
 		return []p9.QID{makeQID(stat)}, c, nil
 	}
 
@@ -482,14 +491,20 @@ func (l *localFile) Walk(names []string) ([]p9.QID, p9.File, error) {
 
 		f, path, err := openAnyFile(last, name)
 		if err != nil {
+			log.Infof("bbbbbbbbbbb...... %v, %s", names, l.hostPath)
+
 			return nil, nil, extractErrno(err)
 		}
 		stat, err := stat(int(f.Fd()))
 		if err != nil {
+			log.Infof("cccccccccccc...... %v, %s", names, l.hostPath)
+
 			return nil, nil, extractErrno(err)
 		}
 		c, err := newLocalFile(last.conf, f, path, stat)
 		if err != nil {
+			log.Infof("ddddddddddd...... %v, %s", names, l.hostPath)
+
 			return nil, nil, extractErrno(err)
 		}
 

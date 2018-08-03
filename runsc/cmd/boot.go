@@ -19,11 +19,14 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"fmt"
+	"io"
+	"strconv"
 
 	"context"
 	"flag"
 	"github.com/google/subcommands"
-	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"gvisor.googlesource.com/gvisor/pkg/log"
 	"gvisor.googlesource.com/gvisor/runsc/boot"
 	"gvisor.googlesource.com/gvisor/runsc/specutils"
@@ -75,6 +78,50 @@ func (b *Boot) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&b.applyCaps, "apply-caps", false, "if true, apply capabilities defined in the spec to the process")
 }
 
+
+// writeSync is used to write to a synchronisation pipe. An error is returned
+// if there was a problem writing the payload.
+func writeSync(pipe io.Writer) error {
+	_, err := pipe.Write([]byte{1})
+	return err
+}
+
+func readSync(pipe io.Reader) error {
+	a := make([]byte, 1)
+	_, err := pipe.Read(a)
+	return err
+}
+
+// syncParentReady sends to the given pipe a JSON payload which indicates that
+// the init is ready to Exec the child process. It then waits for the parent to
+// indicate that it is cleared to Exec.
+func syncParentReady() error {
+	envInitPipe  := os.Getenv("_RUNSC_INITPIPE")
+	log.Debugf("Syn with parent: pipe %s", envInitPipe)
+
+	pipefd, err := strconv.Atoi(envInitPipe)
+	pipe := os.NewFile(uintptr(pipefd), "pipe")
+
+	if err != nil {
+		return fmt.Errorf("unable to convert _LIBCONTAINER_INITPIPE=%s to int: %s", envInitPipe, err)
+	}
+	// Tell parent.
+	if err := writeSync(pipe); err != nil {
+		return err
+	}
+
+	log.Debugf("Write to parent...")
+
+	// Wait for parent to give the all-clear.
+	if err := readSync(pipe); err != nil {
+		return err
+	}
+
+	log.Debugf("Read from parent...")
+
+	return nil
+}
+
 // Execute implements subcommands.Command.Execute.  It starts a sandbox in a
 // waiting state.
 func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) subcommands.ExitStatus {
@@ -91,6 +138,7 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 	if err != nil {
 		Fatalf("error reading spec: %v", err)
 	}
+
 	specutils.LogSpec(spec)
 
 	// Turn any relative paths in the spec to absolute by prepending the bundleDir.
@@ -137,6 +185,9 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 		panic("setCapsAndCallSelf must never return success")
 	}
 
+	// sync with create process
+	syncParentReady()
+
 	// Create the loader.
 	l, err := boot.New(spec, conf, b.controllerFD, b.ioFDs.GetArray(), b.console)
 	if err != nil {
@@ -149,6 +200,8 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 	// Wait for the start signal from runsc.
 	l.WaitForStartSignal()
 
+	log.Debugf("Start root signal got")
+
 	// Run the application and wait for it to finish.
 	if err := l.Run(); err != nil {
 		l.Destroy()
@@ -156,7 +209,7 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 	}
 
 	ws := l.WaitExit()
-	log.Infof("application exiting with %+v", ws)
+	log.Debugf("Root exit: %+v", ws)
 	*waitStatus = syscall.WaitStatus(ws.Status())
 	l.Destroy()
 	return subcommands.ExitSuccess

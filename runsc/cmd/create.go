@@ -21,6 +21,7 @@ import (
 	"gvisor.googlesource.com/gvisor/runsc/boot"
 	"gvisor.googlesource.com/gvisor/runsc/container"
 	"gvisor.googlesource.com/gvisor/runsc/specutils"
+	"gvisor.googlesource.com/gvisor/pkg/log"
 )
 
 // Create implements subcommands.Command for the "create" command.
@@ -90,5 +91,8 @@ func (c *Create) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}
 	if _, err := container.Create(id, spec, conf, bundleDir, c.consoleSocket, c.pidFile); err != nil {
 		Fatalf("error creating container: %v", err)
 	}
+
+	log.Infof("create command finished")
+
 	return subcommands.ExitSuccess
 }

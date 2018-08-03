@@ -23,6 +23,8 @@ import (
 	"github.com/google/subcommands"
 	"gvisor.googlesource.com/gvisor/pkg/log"
 	"gvisor.googlesource.com/gvisor/runsc/boot"
+
+	"gvisor.googlesource.com/gvisor/runsc/cgroup"
 	"gvisor.googlesource.com/gvisor/runsc/container"
 )
 
@@ -79,6 +81,13 @@ func (d *Delete) execute(ids []string, conf *boot.Config) error {
 		if !d.force && (c.Status == container.Running) {
 			return fmt.Errorf("cannot stop running container without --force flag")
 		}
+
+		cgroupConfig, err := cgroup.CreateCgroupConfig(c.Spec)
+		if err != nil {
+			return fmt.Errorf("error loading Cgroyup config %q: %v", id, err)
+		}
+		c.CgroupManager = cgroup.NewCgroupsManager(cgroupConfig, c.CgroupPaths)
+
 		if err := c.Destroy(); err != nil {
 			return fmt.Errorf("error destroying container: %v", err)
 		}

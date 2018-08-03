@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	specs "github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/opencontainers/runtime-spec/specs-go"
 	"golang.org/x/sys/unix"
 	"gvisor.googlesource.com/gvisor/pkg/control/client"
 	"gvisor.googlesource.com/gvisor/pkg/control/server"
@@ -51,6 +51,8 @@ type Sandbox struct {
 	// GoferPid is the pid of the gofer running along side the sandbox. May
 	// be 0 if the gofer has been killed or it's not being used.
 	GoferPid int `json:"goferPid"`
+
+	ParentPipe *os.File `json:"-"`
 }
 
 // Create creates the sandbox process.
@@ -62,6 +64,8 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 		return nil, err
 	}
 
+	log.Infof("binary path %s", binPath)
+
 	// Create the gofer process.
 	ioFiles, err := s.createGoferProcess(spec, conf, bundleDir, binPath)
 	if err != nil {
@@ -70,11 +74,6 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 
 	// Create the sandbox process.
 	if err := s.createSandboxProcess(spec, conf, bundleDir, consoleSocket, binPath, ioFiles); err != nil {
-		return nil, err
-	}
-
-	// Wait for the control server to come up (or timeout).
-	if err := s.waitForCreated(10 * time.Second); err != nil {
 		return nil, err
 	}
 
@@ -286,9 +285,19 @@ func (s *Sandbox) createGoferProcess(spec *specs.Spec, conf *boot.Config, bundle
 	return sandEnds, nil
 }
 
+// NewSockPair returns a new unix socket pair
+func NewSockPair(name string) (parent *os.File, child *os.File, err error) {
+	fds, err := unix.Socketpair(unix.AF_LOCAL, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return os.NewFile(uintptr(fds[1]), name+"-p"), os.NewFile(uintptr(fds[0]), name+"-c"), nil
+}
+
 // createSandboxProcess starts the sandbox as a subprocess by running the "boot"
 // command, passing in the bundle dir.
-func (s *Sandbox) createSandboxProcess(spec *specs.Spec, conf *boot.Config, bundleDir, consoleSocket, binPath string, ioFiles []*os.File) error {
+func (s *Sandbox) createSandboxProcess(spec *specs.Spec, conf *boot.Config, bundleDir,
+		consoleSocket, binPath string, ioFiles []*os.File) error {
 	// nextFD is used to get unused FDs that we can pass to the sandbox.  It
 	// starts at 3 because 0, 1, and 2 are taken by stdin/out/err.
 	nextFD := 3
@@ -323,6 +332,12 @@ func (s *Sandbox) createSandboxProcess(spec *specs.Spec, conf *boot.Config, bund
 		cmd.Args = append(cmd.Args, "--io-fds="+strconv.Itoa(nextFD))
 		nextFD++
 	}
+
+	parentPipe, childPipe, err := NewSockPair("init")
+	s.ParentPipe = parentPipe
+	cmd.ExtraFiles = append(cmd.ExtraFiles, childPipe)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("_RUNSC_INITPIPE=%d", nextFD))
+	nextFD++
 
 	// If the console control socket file is provided, then create a new
 	// pty master/slave pair and set the tty on the sandbox process.
@@ -414,6 +429,7 @@ func (s *Sandbox) createSandboxProcess(spec *specs.Spec, conf *boot.Config, bund
 	if err := startInNS(cmd, nss); err != nil {
 		return err
 	}
+
 	s.Pid = cmd.Process.Pid
 	log.Infof("Sandbox started, pid: %d", s.Pid)
 
@@ -423,7 +439,7 @@ func (s *Sandbox) createSandboxProcess(spec *specs.Spec, conf *boot.Config, bund
 // waitForCreated waits for the sandbox subprocess control server to be
 // running and for the loader to have been created, at which point the sandbox
 // is in Created state.
-func (s *Sandbox) waitForCreated(timeout time.Duration) error {
+func (s *Sandbox) WaitForCreated(timeout time.Duration) error {
 	log.Debugf("Waiting for sandbox %q creation", s.ID)
 
 	ready := func() (bool, error) {
