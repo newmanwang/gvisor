@@ -388,6 +388,8 @@ func (t *Tread) handle(cs *connState) message {
 		return newErr(syscall.ENOBUFS)
 	}
 
+	log.Infof("handle read")
+
 	// Do the read.
 	data := make([]byte, t.Count)
 	n, err := ref.file.ReadAt(data, t.Offset)

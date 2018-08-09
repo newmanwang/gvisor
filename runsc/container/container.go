@@ -101,7 +101,7 @@ type Container struct {
 	CgroupPaths map[string]string `json:"cgroup_paths"`
 
 	// cgroup manager should not be persisted
-	CgroupManager cgroup.Manager `json:"-"`
+	CgroupManager *cgroup.Manager `json:"-"`
 }
 
 // Load loads a container with the given id from a metadata file. id may be an
@@ -242,7 +242,8 @@ func Create(id string, spec *specs.Spec, conf *boot.Config, bundleDir, consoleSo
 		return nil, fmt.Errorf("error parse cgroup config for container with id %q: %v", id, err)
 
 	}
-	c.CgroupManager = cgroup.NewCgroupsManager(cgroupConfig, nil)
+	m := cgroup.NewCgroupsManager(cgroupConfig, nil)
+	c.CgroupManager = &m
 
 	log.Debugf("Container cgroup config %v", cgroupConfig)
 
@@ -532,7 +533,9 @@ func (c *Container) Destroy() error {
 		}
 	}
 
-	c.CgroupManager.Destroy()
+	if c.CgroupManager != nil {
+		c.CgroupManager.Destroy()
+	}
 
 	// "If any poststop hook fails, the runtime MUST log a warning, but the
 	// remaining hooks and lifecycle continue as if the hook had succeeded" -OCI spec.

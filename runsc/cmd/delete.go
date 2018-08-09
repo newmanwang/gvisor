@@ -86,7 +86,9 @@ func (d *Delete) execute(ids []string, conf *boot.Config) error {
 		if err != nil {
 			return fmt.Errorf("error loading Cgroyup config %q: %v", id, err)
 		}
-		c.CgroupManager = cgroup.NewCgroupsManager(cgroupConfig, c.CgroupPaths)
+
+		m := cgroup.NewCgroupsManager(cgroupConfig, c.CgroupPaths);
+		c.CgroupManager = &m
 
 		if err := c.Destroy(); err != nil {
 			return fmt.Errorf("error destroying container: %v", err)

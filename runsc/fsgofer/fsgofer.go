@@ -105,7 +105,7 @@ func (a *attachPoint) Attach(appPath string) (p9.File, error) {
 
 	root := path.Join(a.prefix, appPath)
 
-	log.Infof("AttachPointPath %s", root)
+	log.Debugf("AttachPointPath %s", root)
 
 	fi, err := os.Stat(root)
 	if err != nil {
@@ -277,8 +277,6 @@ func newLocalFile(conf Config, file *os.File, path string, stat syscall.Stat_t) 
 	case syscall.S_IFLNK:
 		ft = symlink
 	default:
-		log.Infof("eeeeeeee...... %s", path)
-
 		return nil, syscall.EINVAL
 	}
 	return &localFile{

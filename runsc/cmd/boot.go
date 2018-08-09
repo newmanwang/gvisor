@@ -30,6 +30,7 @@ import (
 	"gvisor.googlesource.com/gvisor/pkg/log"
 	"gvisor.googlesource.com/gvisor/runsc/boot"
 	"gvisor.googlesource.com/gvisor/runsc/specutils"
+	"golang.org/x/sys/unix"
 )
 
 // Boot implements subcommands.Command for the "boot" command which starts a
@@ -103,7 +104,7 @@ func syncParentReady() error {
 	pipe := os.NewFile(uintptr(pipefd), "pipe")
 
 	if err != nil {
-		return fmt.Errorf("unable to convert _LIBCONTAINER_INITPIPE=%s to int: %s", envInitPipe, err)
+		return fmt.Errorf("unable to convert _RUNSC_INITPIPE=%s to int: %s", envInitPipe, err)
 	}
 	// Tell parent.
 	if err := writeSync(pipe); err != nil {
@@ -197,6 +198,14 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 	// Notify other processes the loader has been created.
 	l.NotifyLoaderCreated()
 
+	// TODO: change uid and gid
+	//if err := Setgid(2000); err != nil {
+	//	Fatalf("error set gid: %v", err)
+	//}
+	//if err := Setuid(2000); err != nil {
+	//	Fatalf("error set uid: %v", err)
+	//}
+
 	// Wait for the start signal from runsc.
 	l.WaitForStartSignal()
 
@@ -213,4 +222,22 @@ func (b *Boot) Execute(_ context.Context, f *flag.FlagSet, args ...interface{}) 
 	*waitStatus = syscall.WaitStatus(ws.Status())
 	l.Destroy()
 	return subcommands.ExitSuccess
+}
+
+// Setuid sets the uid of the calling thread to the specified uid.
+func Setuid(uid int) (err error) {
+	_, _, e1 := unix.RawSyscall(unix.SYS_SETUID, uintptr(uid), 0, 0)
+	if e1 != 0 {
+		err = e1
+	}
+	return
+}
+
+// Setgid sets the gid of the calling thread to the specified gid.
+func Setgid(gid int) (err error) {
+	_, _, e1 := unix.RawSyscall(unix.SYS_SETGID, uintptr(gid), 0, 0)
+	if e1 != 0 {
+		err = e1
+	}
+	return
 }
