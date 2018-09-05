@@ -98,6 +98,26 @@ func (e *endpoint) WritePacket(r *stack.Route, hdr *buffer.Prependable, payload 
 		DstAddr:       r.RemoteAddress,
 	})
 
+	// loop ip packet back to local interface
+	if r.LocalRoute {
+		localRoute := r.Clone()
+		defer localRoute.Release()
+		localRoute.LocalAddress = r.RemoteAddress
+		localRoute.RemoteAddress = tcpip.Address(e.address[:])
+		if len(payload) == 0 {
+			// We don't have a payload, so just use the buffer from the
+			// header as the full packet.
+			v := hdr.View()
+			vv := v.ToVectorisedView([1]buffer.View{})
+			e.HandlePacket(&localRoute, &vv)
+		} else {
+			views := []buffer.View{hdr.View(), payload}
+			vv := buffer.NewVectorisedView(len(views[0]) + len(views[1]), views)
+			e.HandlePacket(&localRoute, &vv)
+		}
+		return nil
+	}
+
 	return e.linkEP.WritePacket(r, hdr, payload, ProtocolNumber)
 }
 

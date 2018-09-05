@@ -46,6 +46,9 @@ type Route struct {
 	// ref a reference to the network endpoint through which the route
 	// starts.
 	ref *referencedNetworkEndpoint
+
+	// LocalRoute is true if this route lead to a local interface
+	LocalRoute bool
 }
 
 // makeRoute initializes a new route. It takes ownership of the provided

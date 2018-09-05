@@ -225,7 +225,7 @@ func TestTransportReceive(t *testing.T) {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
 
-	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1}})
+	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1, false}})
 
 	if err := s.AddAddress(1, fakeNetNumber, "\x01"); err != nil {
 		t.Fatalf("AddAddress failed: %v", err)
@@ -285,7 +285,7 @@ func TestTransportControlReceive(t *testing.T) {
 		t.Fatalf("CreateNIC failed: %v", err)
 	}
 
-	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1}})
+	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1, false}})
 
 	if err := s.AddAddress(1, fakeNetNumber, "\x01"); err != nil {
 		t.Fatalf("AddAddress failed: %v", err)
@@ -355,7 +355,7 @@ func TestTransportSend(t *testing.T) {
 		t.Fatalf("AddAddress failed: %v", err)
 	}
 
-	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1}})
+	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1, false}})
 
 	// Create endpoint and bind it.
 	wq := waiter.Queue{}

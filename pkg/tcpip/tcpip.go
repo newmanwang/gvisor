@@ -439,6 +439,9 @@ type Route struct {
 
 	// NIC is the id of the nic to be used if this row is viable.
 	NIC NICID
+
+	// LocalRoute is true if route lead to local interface
+	LocalRoute bool
 }
 
 // Match determines if r is viable for the given destination address.

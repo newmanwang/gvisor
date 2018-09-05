@@ -275,6 +275,9 @@ type Stack struct {
 	// destination.
 	routeTable []tcpip.Route
 
+	// localRouteTable contain routes lead to local interface
+	localRouteTable []tcpip.Route
+
 	*ports.PortManager
 
 	// If not nil, then any new endpoints will have this probe function
@@ -451,6 +454,15 @@ func (s *Stack) SetRouteTable(table []tcpip.Route) {
 
 	s.routeTable = table
 }
+
+// SetLocalRouteTable works like SetRouteTable, but for local routes
+func (s *Stack) SetLocalRouteTable(table []tcpip.Route) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.localRouteTable = table
+}
+
 
 // NewEndpoint creates a new transport layer endpoint of the given protocol.
 func (s *Stack) NewEndpoint(transport tcpip.TransportProtocolNumber, network tcpip.NetworkProtocolNumber, waiterQueue *waiter.Queue) (tcpip.Endpoint, *tcpip.Error) {
@@ -638,41 +650,64 @@ func (s *Stack) RemoveAddress(id tcpip.NICID, addr tcpip.Address) *tcpip.Error {
 	return nic.RemoveAddress(addr)
 }
 
+func (s *Stack) findRouteInOneTable(id tcpip.NICID, localAddr, remoteAddr tcpip.Address, netProto tcpip.NetworkProtocolNumber, route tcpip.Route) *Route  {
+	if (id != 0 && id != route.NIC) || (len(remoteAddr) != 0 && !route.Match(remoteAddr)) {
+		return nil
+	}
+
+	nic := s.nics[route.NIC]
+	if nic == nil {
+		return nil
+	}
+
+	var ref *referencedNetworkEndpoint
+	if len(localAddr) != 0 {
+		ref = nic.findEndpoint(netProto, localAddr)
+	} else {
+		ref = nic.primaryEndpoint(netProto)
+	}
+	if ref == nil {
+		return nil
+	}
+
+	if len(remoteAddr) == 0 {
+		// If no remote address was provided, then the route
+		// provided will refer to the link local address.
+		remoteAddr = ref.ep.ID().LocalAddress
+	}
+
+	findLocalAddr := ref.ep.ID().LocalAddress
+	r := makeRoute(netProto, findLocalAddr, remoteAddr, ref)
+	r.NextHop = route.Gateway
+	if route.LocalRoute {
+		r.LocalRoute = true
+	}
+
+	return &r
+}
+
 // FindRoute creates a route to the given destination address, leaving through
 // the given nic and local address (if provided).
+// Check local route table first just like in linux kernel, then check main table
 func (s *Stack) FindRoute(id tcpip.NICID, localAddr, remoteAddr tcpip.Address, netProto tcpip.NetworkProtocolNumber) (Route, *tcpip.Error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	for i := range s.localRouteTable {
+		route := s.localRouteTable[i]
+		r := s.findRouteInOneTable(id, localAddr, remoteAddr, netProto, route)
+		if r != nil {
+			return *r, nil
+		}
+	}
+
+
 	for i := range s.routeTable {
-		if (id != 0 && id != s.routeTable[i].NIC) || (len(remoteAddr) != 0 && !s.routeTable[i].Match(remoteAddr)) {
-			continue
+		route := s.routeTable[i]
+		r := s.findRouteInOneTable(id, localAddr, remoteAddr, netProto, route)
+		if r != nil {
+			return *r, nil
 		}
-
-		nic := s.nics[s.routeTable[i].NIC]
-		if nic == nil {
-			continue
-		}
-
-		var ref *referencedNetworkEndpoint
-		if len(localAddr) != 0 {
-			ref = nic.findEndpoint(netProto, localAddr)
-		} else {
-			ref = nic.primaryEndpoint(netProto)
-		}
-		if ref == nil {
-			continue
-		}
-
-		if len(remoteAddr) == 0 {
-			// If no remote address was provided, then the route
-			// provided will refer to the link local address.
-			remoteAddr = ref.ep.ID().LocalAddress
-		}
-
-		r := makeRoute(netProto, ref.ep.ID().LocalAddress, remoteAddr, ref)
-		r.NextHop = s.routeTable[i].Gateway
-		return r, nil
 	}
 
 	return Route{}, tcpip.ErrNoRoute
@@ -763,6 +798,14 @@ func (s *Stack) AddLinkAddress(nicid tcpip.NICID, addr tcpip.Address, linkAddr t
 
 // GetLinkAddress implements LinkAddressCache.GetLinkAddress.
 func (s *Stack) GetLinkAddress(nicid tcpip.NICID, addr, localAddr tcpip.Address, protocol tcpip.NetworkProtocolNumber, waker *sleep.Waker) (tcpip.LinkAddress, *tcpip.Error) {
+	// Get link address immediately if target to an address on a local interface
+	localNic := s.CheckLocalAddress(0, protocol, addr)
+	if localNic != 0 {
+		s.mu.RLock()
+		nic := s.nics[localNic]
+		s.mu.RUnlock()
+		return nic.linkEP.LinkAddress(), nil
+	}
 	s.mu.RLock()
 	nic := s.nics[nicid]
 	if nic == nil {

@@ -103,6 +103,7 @@ func (n *Network) CreateLinksAndRoutes(args *CreateLinksAndRoutesArgs, _ *struct
 
 	// Collect routes from all links.
 	var routes []tcpip.Route
+	var localRoutes []tcpip.Route
 
 	// Loopback normally appear before other interfaces.
 	for _, link := range args.LoopbackLinks {
@@ -118,7 +119,7 @@ func (n *Network) CreateLinksAndRoutes(args *CreateLinksAndRoutesArgs, _ *struct
 
 		// Collect the routes from this link.
 		for _, r := range link.Routes {
-			routes = append(routes, r.toTcpipRoute(nicID))
+			localRoutes = append(localRoutes, r.toTcpipRoute(nicID))
 		}
 	}
 
@@ -150,6 +151,16 @@ func (n *Network) CreateLinksAndRoutes(args *CreateLinksAndRoutesArgs, _ *struct
 		for _, r := range link.Routes {
 			routes = append(routes, r.toTcpipRoute(nicID))
 		}
+
+		// Create local routes for these addresses
+		for _, address := range link.Addresses {
+			localRoutes = append(localRoutes, tcpip.Route{
+				Destination: ipToAddress(address),
+				Mask: ipToAddress(net.IP([]byte{255,255,255,255})),
+				NIC: nicID,
+				LocalRoute: true,
+			})
+		}
 	}
 
 	if !args.DefaultGateway.Route.Empty() {
@@ -162,6 +173,7 @@ func (n *Network) CreateLinksAndRoutes(args *CreateLinksAndRoutesArgs, _ *struct
 
 	log.Infof("Setting routes %+v", routes)
 	n.Stack.SetRouteTable(routes)
+	n.Stack.SetLocalRouteTable(localRoutes)
 	return nil
 }
 

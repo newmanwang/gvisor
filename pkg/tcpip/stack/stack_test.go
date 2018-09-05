@@ -285,7 +285,7 @@ func TestNetworkSend(t *testing.T) {
 		t.Fatalf("NewNIC failed: %v", err)
 	}
 
-	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1}})
+	s.SetRouteTable([]tcpip.Route{{"\x00", "\x00", "\x00", 1, false}})
 
 	if err := s.AddAddress(1, fakeNetNumber, "\x01"); err != nil {
 		t.Fatalf("AddAddress failed: %v", err)
@@ -334,8 +334,8 @@ func TestNetworkSendMultiRoute(t *testing.T) {
 	// addresses through the first NIC, and all even destination address
 	// through the second one.
 	s.SetRouteTable([]tcpip.Route{
-		{"\x01", "\x01", "\x00", 1},
-		{"\x00", "\x01", "\x00", 2},
+		{"\x01", "\x01", "\x00", 1, false},
+		{"\x00", "\x01", "\x00", 2, false},
 	})
 
 	// Send a packet to an odd destination.
@@ -413,8 +413,8 @@ func TestRoutes(t *testing.T) {
 	// addresses through the first NIC, and all even destination address
 	// through the second one.
 	s.SetRouteTable([]tcpip.Route{
-		{"\x01", "\x01", "\x00", 1},
-		{"\x00", "\x01", "\x00", 2},
+		{"\x01", "\x01", "\x00", 1, false},
+		{"\x00", "\x01", "\x00", 2, false},
 	})
 
 	// Test routes to odd address.
@@ -501,7 +501,7 @@ func TestDelayedRemovalDueToRoute(t *testing.T) {
 	}
 
 	s.SetRouteTable([]tcpip.Route{
-		{"\x00", "\x00", "\x00", 1},
+		{"\x00", "\x00", "\x00", 1, false},
 	})
 
 	fakeNet := s.NetworkProtocolInstance(fakeNetNumber).(*fakeNetworkProtocol)
@@ -565,7 +565,7 @@ func TestPromiscuousMode(t *testing.T) {
 	}
 
 	s.SetRouteTable([]tcpip.Route{
-		{"\x00", "\x00", "\x00", 1},
+		{"\x00", "\x00", "\x00", 1, false},
 	})
 
 	fakeNet := s.NetworkProtocolInstance(fakeNetNumber).(*fakeNetworkProtocol)
@@ -629,7 +629,7 @@ func TestAddressSpoofing(t *testing.T) {
 	}
 
 	s.SetRouteTable([]tcpip.Route{
-		{"\x00", "\x00", "\x00", 1},
+		{"\x00", "\x00", "\x00", 1, false},
 	})
 
 	// With address spoofing disabled, FindRoute does not permit an address
@@ -666,7 +666,7 @@ func TestSubnetAcceptsMatchingPacket(t *testing.T) {
 	}
 
 	s.SetRouteTable([]tcpip.Route{
-		{"\x00", "\x00", "\x00", 1},
+		{"\x00", "\x00", "\x00", 1, false},
 	})
 
 	fakeNet := s.NetworkProtocolInstance(fakeNetNumber).(*fakeNetworkProtocol)
@@ -700,7 +700,7 @@ func TestSubnetRejectsNonmatchingPacket(t *testing.T) {
 	}
 
 	s.SetRouteTable([]tcpip.Route{
-		{"\x00", "\x00", "\x00", 1},
+		{"\x00", "\x00", "\x00", 1, false},
 	})
 
 	fakeNet := s.NetworkProtocolInstance(fakeNetNumber).(*fakeNetworkProtocol)
